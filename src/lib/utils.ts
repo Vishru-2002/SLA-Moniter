@@ -8,9 +8,10 @@ export function formatDate(iso: string): string {
   }
 }
 
+/** 24-hour clock with seconds, e.g. "May 8, 2025 07:00:00". */
 export function formatDateTime(iso: string): string {
   try {
-    return format(parseISO(iso), 'MMM d, yyyy HH:mm');
+    return format(parseISO(iso), 'MMM d, yyyy HH:mm:ss');
   } catch {
     return iso;
   }
