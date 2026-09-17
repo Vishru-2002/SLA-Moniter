@@ -8,8 +8,9 @@ import { formatDate, formatUptime } from '../lib/utils';
 
 interface Props {
   serviceStats: ServiceStats[];
-  monthly: MonthlySla[];
-  outages: Outage[];
+  /** null on both of these means "not loaded", not "empty" -- see OutageList. */
+  monthly: MonthlySla[] | null;
+  outages: Outage[] | null;
   upload: Upload | null;
   /** Human-readable description of the window serviceStats covers. */
   scopeLabel: string;
@@ -35,7 +36,13 @@ export function StatsPanel({
   const totalHealthy = serviceStats.reduce((n, s) => n + s.healthy_checks, 0);
   const overallUptime = totalChecks > 0 ? (totalHealthy / totalChecks) * 100 : 100;
 
-  const maxCredit = monthly.reduce((m, r) => Math.max(m, r.credit_pct), 0);
+  // Unknown while the monthly query has not returned: the tile must not read
+  // "None owed" on the strength of data it does not have.
+  const maxCredit = monthly === null
+    ? null
+    : monthly.reduce((m, r) => Math.max(m, r.credit_pct), 0);
+  const creditUnknown = maxCredit === null;
+  const creditOwed = maxCredit !== null && maxCredit > 0;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -96,22 +103,38 @@ export function StatsPanel({
               </div>
               <div
                 className={`rounded-lg p-3 ${
-                  maxCredit > 0 ? 'bg-red-50' : 'bg-green-50'
+                  creditUnknown
+                    ? 'bg-gray-50'
+                    : creditOwed
+                      ? 'bg-red-50'
+                      : 'bg-green-50'
                 }`}
               >
                 <p
                   className={`text-xs font-medium ${
-                    maxCredit > 0 ? 'text-red-600' : 'text-green-600'
+                    creditUnknown
+                      ? 'text-gray-500'
+                      : creditOwed
+                        ? 'text-red-600'
+                        : 'text-green-600'
                   }`}
                 >
                   Max monthly credit
                 </p>
                 <p
                   className={`font-semibold ${
-                    maxCredit > 0 ? 'text-red-900' : 'text-green-900'
+                    creditUnknown
+                      ? 'text-gray-400'
+                      : creditOwed
+                        ? 'text-red-900'
+                        : 'text-green-900'
                   }`}
                 >
-                  {maxCredit > 0 ? `${maxCredit}% owed` : 'None owed'}
+                  {creditUnknown
+                    ? '—'
+                    : creditOwed
+                      ? `${maxCredit}% owed`
+                      : 'None owed'}
                 </p>
               </div>
             </div>

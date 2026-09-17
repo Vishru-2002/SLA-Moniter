@@ -1,14 +1,15 @@
-import { Flame, ShieldCheck } from 'lucide-react';
+import { Flame, ShieldCheck, HelpCircle } from 'lucide-react';
 import type { Outage } from '../lib/types';
 import { formatDate, formatTime, formatDuration } from '../lib/utils';
 
 interface Props {
-  outages: Outage[];
+  /** null = not loaded. Distinct from [], which means "none were detected". */
+  outages: Outage[] | null;
 }
 
 /**
- * Incidents, as detected server-side by service_outages() (migration 002):
- * a sliding 6-check window whose failure rate exceeds 50%, with overlapping
+ * Incidents, as detected server-side by service_outages() (migration 003):
+ * a sliding 5-check window whose failure rate exceeds 50%, with overlapping
  * windows merged into one incident.
  *
  * This is the stat that separates a real outage from background noise. Both
@@ -17,6 +18,22 @@ interface Props {
  * somebody got paged for.
  */
 export function OutageList({ outages }: Props) {
+  // "No outages" is a claim about the data, so it is only made when the query
+  // actually returned. If it did not, say so rather than implying an all-clear.
+  if (outages === null) {
+    return (
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          Detected incidents
+        </h3>
+        <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+          <HelpCircle className="w-4 h-4 text-gray-400" />
+          Incident detection did not return &mdash; this is not an all-clear.
+        </div>
+      </div>
+    );
+  }
+
   if (outages.length === 0) {
     return (
       <div>
@@ -39,7 +56,7 @@ export function OutageList({ outages }: Props) {
           Detected incidents
         </h3>
         <span className="text-xs text-gray-400">
-          sliding 6-check window, &gt;50% failure rate
+          sliding 5-check window, &gt;50% failure rate
         </span>
       </div>
 

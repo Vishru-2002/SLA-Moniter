@@ -23,7 +23,7 @@ export function UploadPage() {
           <div className="flex items-center justify-center gap-2 mb-3">
             <Activity className="w-8 h-8 text-blue-600" />
             <h1 className="text-3xl font-bold text-gray-900">
-              EarthRe SLA Monitor
+              SLA Monitor
             </h1>
           </div>
           <p className="text-gray-600 max-w-md mx-auto">

@@ -21,6 +21,10 @@ export function UploadSummary({ result, onViewDashboard }: Props) {
   const issues = summary.issues_found;
   const totalIssues = Object.values(issues).reduce((a, b) => a + b, 0);
 
+  // Rows that survived cleaning but did not reach the database. Normally zero;
+  // non-zero only when a batch insert failed partway through.
+  const failedToStore = summary.rows_after_cleaning - summary.rows_inserted;
+
   return (
     <div className="w-full max-w-xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center gap-3 mb-4">
@@ -33,19 +37,54 @@ export function UploadSummary({ result, onViewDashboard }: Props) {
         </div>
       </div>
 
+      {/* Row reconciliation.
+          Showing "received 6,230 / inserted 5,760" side by side reads as data
+          loss. Every row that does not reach the database is accounted for
+          here instead, so the gap explains itself. */}
+      <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+        <div className="flex items-stretch divide-x divide-gray-200 text-center">
+          <div className="flex-1 p-3">
+            <p className="text-xl font-bold text-gray-900">
+              {summary.total_rows_received.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500">rows in file</p>
+          </div>
+
+          <div className="flex-1 p-3 bg-amber-50/60">
+            <p className="text-xl font-bold text-amber-700">
+              &minus;{issues.duplicates_removed.toLocaleString()}
+            </p>
+            <p className="text-xs text-amber-700">duplicates</p>
+          </div>
+
+          {failedToStore > 0 && (
+            <div className="flex-1 p-3 bg-red-50">
+              <p className="text-xl font-bold text-red-700">
+                &minus;{failedToStore.toLocaleString()}
+              </p>
+              <p className="text-xs text-red-700">failed to store</p>
+            </div>
+          )}
+
+          <div className="flex-1 p-3 bg-green-50">
+            <p className="text-xl font-bold text-green-700">
+              {summary.rows_inserted.toLocaleString()}
+            </p>
+            <p className="text-xs text-green-700">stored</p>
+          </div>
+        </div>
+
+        {issues.duplicates_removed > 0 && (
+          <p className="text-xs text-gray-600 bg-gray-50 border-t border-gray-200 px-3 py-2">
+            Two monitoring agents report some checks twice. Collapsing those{' '}
+            {issues.duplicates_removed.toLocaleString()} repeats keeps each check
+            counted once, so the uptime figures are not diluted by observations
+            that never happened.
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-        <div className="bg-gray-50 rounded-lg p-3">
-          <p className="text-gray-500">Rows received</p>
-          <p className="text-xl font-bold text-gray-900">
-            {summary.total_rows_received.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-          <p className="text-gray-500">Rows inserted</p>
-          <p className="text-xl font-bold text-gray-900">
-            {summary.rows_inserted.toLocaleString()}
-          </p>
-        </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-gray-500">Date range</p>
           <p className="text-sm font-semibold text-gray-900">

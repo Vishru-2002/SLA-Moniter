@@ -39,10 +39,15 @@ function toStats(r: Record<string, unknown>): ServiceStats {
 export function useSlaStats(uploadId: string | null, dateFilter: DateFilter) {
   const [stats, setStats] = useState<ServiceStats[]>([]);
   const [allServices, setAllServices] = useState<{ id: string; name: string }[]>([]);
-  const [monthly, setMonthly] = useState<MonthlySla[]>([]);
-  const [outages, setOutages] = useState<Outage[]>([]);
+  // null means "not loaded" and is distinct from [], which means "loaded, and
+  // there genuinely are none". Collapsing the two lets a failed query render as
+  // an all-clear -- an empty outage list reads "no sustained outages", which is
+  // an assertion the data never actually supported.
+  const [monthly, setMonthly] = useState<MonthlySla[] | null>(null);
+  const [outages, setOutages] = useState<Outage[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const { start, end } = filterBounds(dateFilter);
 
@@ -52,19 +57,27 @@ export function useSlaStats(uploadId: string | null, dateFilter: DateFilter) {
     let cancelled = false;
     setLoading(true);
 
-    supabase
-      .rpc('service_stats', {
+    // Promise.resolve() so a transport-level rejection can be caught too: the
+    // builder is only a PromiseLike and has no .catch of its own.
+    Promise.resolve(
+      supabase.rpc('service_stats', {
         p_upload_id: uploadId,
         p_start: start,
         p_end: end,
       })
+    )
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error) setError(error.message);
+        if (error) setStatsError(error.message);
         else {
           setStats((data ?? []).map(toStats));
-          setError(null);
+          setStatsError(null);
         }
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setStatsError(err instanceof Error ? err.message : 'Request failed');
         setLoading(false);
       });
 
@@ -84,6 +97,16 @@ export function useSlaStats(uploadId: string | null, dateFilter: DateFilter) {
       supabase.rpc('service_outages', { p_upload_id: uploadId }),
     ]).then(([statsRes, monthlyRes, outageRes]) => {
       if (cancelled) return;
+
+      // supabase-js resolves rather than rejects on a SQL error, so these have
+      // to be read explicitly. Skipping them leaves `monthly` and `outages`
+      // empty and indistinguishable from a healthy upload with no incidents.
+      const failed = [statsRes, monthlyRes, outageRes].find((r) => r.error);
+      if (failed?.error) {
+        setSummaryError(failed.error.message);
+        return;
+      }
+      setSummaryError(null);
 
       const rows = (statsRes.data ?? []) as Record<string, unknown>[];
       setAllServices(
@@ -120,6 +143,9 @@ export function useSlaStats(uploadId: string | null, dateFilter: DateFilter) {
           failure_rate: numOr0(r.failure_rate),
         }))
       );
+    }).catch((err: unknown) => {
+      if (cancelled) return;
+      setSummaryError(err instanceof Error ? err.message : 'Request failed');
     });
 
     return () => {
@@ -127,5 +153,12 @@ export function useSlaStats(uploadId: string | null, dateFilter: DateFilter) {
     };
   }, [uploadId]);
 
-  return { stats, allServices, monthly, outages, loading, error };
+  return {
+    stats,
+    allServices,
+    monthly,
+    outages,
+    loading,
+    error: statsError ?? summaryError,
+  };
 }

@@ -10,7 +10,7 @@ export function useUpload() {
 
   async function uploadCSV(file: File) {
     setUploading(true);
-    setProgress('Uploading CSV to cloud function...');
+    setProgress('Uploading CSV...');
     setError(null);
     setResult(null);
 

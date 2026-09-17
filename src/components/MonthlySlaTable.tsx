@@ -3,7 +3,8 @@ import type { MonthlySla } from '../lib/types';
 import { formatMonth, formatUptime } from '../lib/utils';
 
 interface Props {
-  rows: MonthlySla[];
+  /** null = not loaded. Distinct from [], which means "no months to report". */
+  rows: MonthlySla[] | null;
 }
 
 function creditBadge(pct: number) {
@@ -19,6 +20,22 @@ function creditBadge(pct: number) {
  * over whatever window the uploaded file happens to cover.
  */
 export function MonthlySlaTable({ rows }: Props) {
+  // A failed query must not silently remove the billing section: an absent
+  // table reads as "nothing owed", which is the one conclusion it cannot draw.
+  if (rows === null) {
+    return (
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          Monthly SLA &amp; billing credit
+        </h3>
+        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+          Monthly SLA could not be loaded. No credit conclusion can be drawn
+          from this view.
+        </div>
+      </div>
+    );
+  }
+
   if (rows.length === 0) return null;
 
   const months = [...new Set(rows.map((r) => r.month))];
