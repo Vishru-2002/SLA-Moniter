@@ -40,6 +40,15 @@ export interface Issues {
   invalid_status_codes: number;
   duplicates_removed: number;
   duplicate_status_conflicts: number;
+  rejected_rows: number;
+}
+
+/** A row that could not be cleaned, kept so the upload can report it. */
+export interface RejectedRow {
+  /** 1-based line number in the source file (line 1 is the header). */
+  line: number;
+  reason: string;
+  value: string;
 }
 
 export const REQUIRED_COLUMNS = [
@@ -97,17 +106,37 @@ export function missingColumns(rows: RawRow[]): string[] {
  * some duplicate pairs are written in *different* formats and would not match
  * each other as raw strings.
  */
-export function convertTimestamp(ts: string): { iso: string; wasUnix: boolean } {
-  if (/^\d{9,11}$/.test(ts)) {
-    const epoch = parseInt(ts, 10);
-    return { iso: new Date(epoch * 1000).toISOString(), wasUnix: true };
+/**
+ * Returns null rather than throwing on an unparseable value. A single bad
+ * timestamp used to take the whole upload down with it: new Date() produced an
+ * Invalid Date, .toISOString() threw, and the error reached the top-level
+ * handler. One malformed row in 15,000 is not a reason to reject the other
+ * 14,999 -- it is quarantined and reported instead.
+ */
+export function convertTimestamp(
+  ts: string
+): { iso: string; wasUnix: boolean } | null {
+  const raw = ts?.trim();
+  if (!raw) return null;
+
+  if (/^\d{9,11}$/.test(raw)) {
+    const epoch = parseInt(raw, 10);
+    const d = new Date(epoch * 1000);
+    return Number.isNaN(d.getTime())
+      ? null
+      : { iso: d.toISOString(), wasUnix: true };
   }
-  return { iso: new Date(ts).toISOString(), wasUnix: false };
+
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime())
+    ? null
+    : { iso: d.toISOString(), wasUnix: false };
 }
 
 export function cleanRows(rawRows: RawRow[]): {
   cleaned: CleanedRow[];
   issues: Issues;
+  rejected: RejectedRow[];
 } {
   const issues: Issues = {
     unix_timestamps_converted: 0,
@@ -117,13 +146,29 @@ export function cleanRows(rawRows: RawRow[]): {
     invalid_status_codes: 0,
     duplicates_removed: 0,
     duplicate_status_conflicts: 0,
+    rejected_rows: 0,
   };
 
   const cleaned: CleanedRow[] = [];
+  const rejected: RejectedRow[] = [];
 
-  for (const raw of rawRows) {
-    // 1. Timestamp -> UTC
-    const { iso, wasUnix } = convertTimestamp(raw.timestamp);
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i]!;
+
+    // 1. Timestamp -> UTC. An unparseable value quarantines just this row.
+    const ts = convertTimestamp(raw.timestamp);
+    if (!ts) {
+      issues.rejected_rows++;
+      rejected.push({
+        line: i + 2, // +1 for the header, +1 for 1-based lines
+        reason: raw.timestamp?.trim()
+          ? 'unparseable timestamp'
+          : 'missing timestamp',
+        value: (raw.timestamp ?? '').slice(0, 64),
+      });
+      continue;
+    }
+    const { iso, wasUnix } = ts;
     if (wasUnix) issues.unix_timestamps_converted++;
 
     // 2. Status code. 999 appears once per file and is not an HTTP code; it is
@@ -216,7 +261,7 @@ export function cleanRows(rawRows: RawRow[]): {
     (a, b) => new Date(a.check_time).getTime() - new Date(b.check_time).getTime()
   );
 
-  return { cleaned: deduped, issues };
+  return { cleaned: deduped, issues, rejected };
 }
 
 /** Inclusive UTC date range (YYYY-MM-DD) spanned by the cleaned rows. */

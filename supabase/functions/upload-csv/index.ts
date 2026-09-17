@@ -70,9 +70,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { cleaned, issues } = cleanRows(rawRows);
+    const { cleaned, issues, rejected } = cleanRows(rawRows);
     if (cleaned.length === 0) {
-      return json({ error: 'No usable rows after cleaning.' }, 400);
+      return json(
+        {
+          error: 'No usable rows after cleaning.',
+          rejected_rows: rejected.length,
+          rejected_samples: rejected.slice(0, 5),
+        },
+        400
+      );
     }
 
     const { start: minDate, end: maxDate } = dateRange(cleaned);
@@ -144,6 +151,9 @@ Deno.serve(async (req: Request) => {
         date_range: { start: minDate, end: maxDate },
         services: [...new Set(cleaned.map((r) => r.service_id))],
         issues_found: issues,
+        // A handful of examples so a rejected row can be found in the source
+        // file, without returning an unbounded list.
+        rejected_samples: rejected.slice(0, 5),
       },
     });
   } catch (err) {

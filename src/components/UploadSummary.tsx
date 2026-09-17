@@ -19,7 +19,15 @@ interface Props {
 export function UploadSummary({ result, onViewDashboard }: Props) {
   const { summary } = result;
   const issues = summary.issues_found;
-  const totalIssues = Object.values(issues).reduce((a, b) => a + b, 0);
+  const totalIssues = Object.values(issues).reduce<number>(
+    (a, b) => a + (b ?? 0),
+    0
+  );
+
+  // Rows the cleaner could not use at all. Reported rather than silently
+  // dropped, and rather than failing the whole upload as it once did.
+  const rejectedCount = issues.rejected_rows ?? 0;
+  const rejectedSamples = summary.rejected_samples ?? [];
 
   // Rows that survived cleaning but did not reach the database. Normally zero;
   // non-zero only when a batch insert failed partway through.
@@ -56,6 +64,15 @@ export function UploadSummary({ result, onViewDashboard }: Props) {
             </p>
             <p className="text-xs text-amber-700">duplicates</p>
           </div>
+
+          {rejectedCount > 0 && (
+            <div className="flex-1 p-3 bg-orange-50">
+              <p className="text-xl font-bold text-orange-700">
+                &minus;{rejectedCount.toLocaleString()}
+              </p>
+              <p className="text-xs text-orange-700">unusable</p>
+            </div>
+          )}
 
           {failedToStore > 0 && (
             <div className="flex-1 p-3 bg-red-50">
@@ -99,6 +116,38 @@ export function UploadSummary({ result, onViewDashboard }: Props) {
           </p>
         </div>
       </div>
+
+      {rejectedCount > 0 && (
+        <div className="mb-4 bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-orange-900 mb-1 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-orange-500" />
+            {rejectedCount.toLocaleString()} row
+            {rejectedCount > 1 ? 's' : ''} could not be read
+          </h4>
+          <p className="text-xs text-orange-800 mb-2">
+            These were skipped; every other row was processed normally. Line
+            numbers refer to the source file.
+          </p>
+          {rejectedSamples.length > 0 && (
+            <ul className="space-y-0.5 font-mono text-xs text-orange-900">
+              {rejectedSamples.map((r) => (
+                <li key={r.line}>
+                  line {r.line}: {r.reason}
+                  {r.value && (
+                    <span className="text-orange-700"> &mdash; “{r.value}”</span>
+                  )}
+                </li>
+              ))}
+              {rejectedCount > rejectedSamples.length && (
+                <li className="text-orange-700 font-sans">
+                  …and {(rejectedCount - rejectedSamples.length).toLocaleString()}{' '}
+                  more
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
+      )}
 
       {result.partial_failure && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
@@ -168,6 +217,15 @@ export function UploadSummary({ result, onViewDashboard }: Props) {
                 <span>
                   {issues.duplicates_removed} duplicate records &rarr;
                   deduplicated
+                </span>
+              </div>
+            )}
+            {rejectedCount > 0 && (
+              <div className="flex items-center gap-2 text-gray-600">
+                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                <span>
+                  {rejectedCount} unreadable row
+                  {rejectedCount > 1 ? 's' : ''} &rarr; skipped and reported
                 </span>
               </div>
             )}

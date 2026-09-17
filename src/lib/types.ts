@@ -27,6 +27,15 @@ export interface Issues {
   invalid_status_codes: number;
   duplicates_removed: number;
   duplicate_status_conflicts: number;
+  /** Rows quarantined during cleaning; absent on uploads made before this existed. */
+  rejected_rows?: number;
+}
+
+/** A row the cleaner could not use, reported so it can be found in the source. */
+export interface RejectedRow {
+  line: number;
+  reason: string;
+  value: string;
 }
 
 export interface MonitoringCheck {
@@ -105,6 +114,7 @@ export interface UploadSummary {
     date_range: { start: string; end: string };
     services: string[];
     issues_found: Issues;
+    rejected_samples?: RejectedRow[];
   };
 }
 
