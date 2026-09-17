@@ -56,7 +56,7 @@ export function OutageList({ outages }: Props) {
           Detected incidents
         </h3>
         <span className="text-xs text-gray-400">
-          sliding 5-check window, &gt;50% failure rate
+          sliding 5-check window, &gt;50% failure rate &middot; times UTC
         </span>
       </div>
 

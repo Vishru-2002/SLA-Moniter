@@ -1,36 +1,61 @@
-import { format, parseISO } from 'date-fns';
+// ---------------------------------------------------------------------------
+// Date/time rendering — everything is displayed in UTC.
+//
+// The whole pipeline is UTC: check_time is stored UTC, the SQL anchors windows
+// with AT TIME ZONE 'UTC', and monthly buckets and worst-day are computed in
+// UTC. Rendering with the browser's local clock therefore made the table
+// disagree with the filters -- at +05:30 a check stored 19:45Z displayed as
+// "May 9, 01:15", so filtering to May 8 returned rows labelled May 9. These
+// read UTC components explicitly so there is no offset to get wrong.
+//
+// A bare YYYY-MM-DD (worst_day, month, date_range_*) carries no time and must
+// NOT be shifted: parsing it as local midnight and re-reading it as UTC moves
+// it back a day for any positive offset. It is anchored at UTC midnight instead.
+// ---------------------------------------------------------------------------
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function utcDate(iso: string): Date | null {
+  if (!iso) return null;
+  const d = new Date(DATE_ONLY.test(iso) ? `${iso}T00:00:00Z` : iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** e.g. "May 8, 2025" (UTC). */
 export function formatDate(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMM d, yyyy');
-  } catch {
-    return iso;
-  }
+  const d = utcDate(iso);
+  if (!d) return iso;
+  return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
-/** 24-hour clock with seconds, e.g. "May 8, 2025 07:00:00". */
+/** 24-hour clock with seconds, e.g. "May 8, 2025 19:45:00" (UTC). */
 export function formatDateTime(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMM d, yyyy HH:mm:ss');
-  } catch {
-    return iso;
-  }
+  const d = utcDate(iso);
+  if (!d) return iso;
+  return (
+    `${formatDate(iso)} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
 }
 
+/** e.g. "May 2025" (UTC). */
 export function formatMonth(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMMM yyyy');
-  } catch {
-    return iso;
-  }
+  const d = utcDate(iso);
+  if (!d) return iso;
+  return `${MONTHS_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** 24-hour clock, e.g. "19:45" (UTC). */
 export function formatTime(iso: string): string {
-  try {
-    return format(parseISO(iso), 'HH:mm');
-  } catch {
-    return iso;
-  }
+  const d = utcDate(iso);
+  if (!d) return iso;
+  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
 export function formatLatency(ms: number | null): string {

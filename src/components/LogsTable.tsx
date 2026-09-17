@@ -40,7 +40,7 @@ export function LogsTable({
           <thead>
             <tr className="border-b border-gray-200">
               <th className="text-left py-3 px-4 font-medium text-gray-500">
-                Time
+                Time <span className="font-normal text-gray-400">(UTC)</span>
               </th>
               <th className="text-left py-3 px-4 font-medium text-gray-500">
                 Service
