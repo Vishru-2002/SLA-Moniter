@@ -3,7 +3,7 @@
  *
  * Kept separate from index.ts (the HTTP handler) so it has no dependency on
  * Deno, the network or the database, and can therefore be imported directly by
- * scripts/verify-sql.mjs. The verification script exercises this exact code
+ * scripts/verify-sql.mjs. The verification scripts exercise this exact code
  * rather than a reimplementation of it.
  */
 
