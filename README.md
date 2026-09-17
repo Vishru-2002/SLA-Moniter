@@ -8,7 +8,7 @@ incidents on a single filterable dashboard.
 
 ## Live URL
 
-- **App:** <https://slamoniter.vercel.app>
+- **App:** <https://sla-moniter-dashboard.vercel.app/>
 - **Cloud function:**
   `https://qbvwdxcnbampwmzidkoy.supabase.co/functions/v1/upload-csv`
 - **Last verified live:** 2026-09-17 — all four migrations applied, function
@@ -27,7 +27,7 @@ minutes — see [Deploying](#deploying).
 
 ```
 ┌──────────────────────────┐      ┌───────────────────────────────┐      ┌────────────────────┐
-│   React SPA (Vite)       │      │  Supabase Edge Function       │      │  Supabase          │
+│   React SPA (Vite)       │      │  Supabase Edge Function       │      │  Supabase           │
 │   Hosted on Vercel       │─────▶│  /upload-csv                  │─────▶│  PostgreSQL        │
 │                          │ POST │  (Deno Deploy — stateless)    │ service│                   │
 │  • Upload page           │ CSV  │                               │  role  │ • uploads         │
