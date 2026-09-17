@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { UploadSummary } from '../lib/types';
 
@@ -8,7 +8,17 @@ export function useUpload() {
   const [result, setResult] = useState<UploadSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // A ref, not the `uploading` state, guards re-entry. State updates are
+  // batched, so two calls in the same tick would both still observe
+  // `uploading === false` and both fire a request -- creating two upload rows
+  // for one user action. A ref updates synchronously, so the second call sees
+  // the first immediately. The disabled UI is a courtesy; this is the guarantee.
+  const inFlight = useRef(false);
+
   async function uploadCSV(file: File) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+
     setUploading(true);
     setProgress('Uploading CSV...');
     setError(null);
@@ -39,6 +49,7 @@ export function useUpload() {
       setError(message);
       setProgress('');
     } finally {
+      inFlight.current = false;
       setUploading(false);
     }
   }
