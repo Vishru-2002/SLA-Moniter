@@ -411,52 +411,61 @@ Each of these is a decision I made knowingly, not something I discovered
 afterwards. The pattern is the same throughout: the pipeline is built to be
 correct on *this* data and honest about where that stops.
 
-**The CSV parser splits on commas.** No quoted fields, no embedded newlines, no
-BOM handling. I verified that none of the five sample files need any of it, so
+**1. The CSV parser splits on commas.** No quoted fields, no embedded newlines,
+no BOM handling. I verified that none of the five sample files need any of it, so
 this is correct here and not merely lucky — but a single quoted field containing
 a comma would shift every column right and corrupt the row silently, which is
 the worst failure mode a parser can have. The fix is a real parser, not a better
 regex.
 
-**Timestamp parsing is all-or-nothing.** One unparseable value makes `new Date()`
-throw, the error reaches the top-level handler, and the entire upload is
-rejected. For a 15k-row file where a single row is malformed, that is the wrong
-trade: bad rows should be quarantined, counted, and reported alongside the
-cleaning summary, so the other 15,576 still land.
-
-**The whole file is buffered in memory.** There is a 25 MB cap
+**2. The whole file is buffered in memory.** There is a 25 MB cap
 ([`index.ts`](supabase/functions/upload-csv/index.ts)) so the endpoint cannot be
 knocked over by an unbounded upload, but a cap is a guard rail, not a design.
 Streaming the parse would remove the ceiling rather than just enforce it.
 
-**The upload endpoint is unauthenticated.** Auth is explicitly out of scope, and
-the security work went into making the *read* path safe — the anon key in the
-bundle can only `SELECT`. But the consequence is real and worth naming: anyone
-with the function URL can create an upload. In production this needs a key or a
-signed URL, not more RLS.
+**3. The upload endpoint is unauthenticated.** Auth is explicitly out of scope,
+and the security work went into making the *read* path safe — the anon key in
+the bundle can only `SELECT`. But the consequence is real and worth naming:
+anyone with the function URL can create an upload. In production this needs a key
+or a signed URL, not more RLS.
 
-**Detector parameters are global, not per-service.** `service_outages()` takes a
-window and a threshold, but the defaults are one pair for every service. They
-were chosen by measurement across all five files (below), so they are not
-arbitrary — yet a service checked every 5 minutes and one checked hourly do not
-deserve the same 5-check window. Per-service calibration is the honest version.
+**4. Every aggregate is recomputed on every dashboard load.** `monthly_sla()`,
+`service_outages()` and the unfiltered `service_stats()` all re-run whenever the
+dashboard mounts, and the filtered `service_stats()` re-runs on every change of
+the date filter — each one scanning the upload's raw checks again. What makes
+this worth fixing rather than tolerating is that **an upload is an immutable
+snapshot**: nothing writes to `monitoring_checks` after the initial insert, so
+every one of these results is deterministic and can only ever produce the same
+answer. Recomputing a monthly SLA figure that cannot change is pure waste, and it
+is the query most exposed to it, since it always covers the whole upload and
+ignores the filter entirely.
 
-**The dashboard's three sections answer three different time windows.** Monthly
-SLA and the incident list always describe the whole upload; only the per-service
-cards follow the date filter. That is deliberate and argued in *Assumptions* —
-a billing credit recomputed from an arbitrary slice is a meaningless number —
-but it means filtering to one day visibly changes only part of the page, and the
-UI currently labels the scope on one section out of three.
+The honest fix is a cache keyed on `upload_id`. Three layers would work, in
+increasing order of effort: a materialised summary table written once by the Edge
+Function at the end of an upload, when the data is already in hand; a
+`MATERIALIZED VIEW` refreshed per upload; or simply an HTTP cache header on the
+RPC responses, since the payload is immutable and safe to cache indefinitely.
+The first is the most attractive — it moves the cost to the one moment the data
+actually changes, and it would have removed the statement timeout described
+above rather than merely outrunning it.
+
+**5. Failing checks are hard to reach in the logs table.** At 15,577 rows and 50
+per page, the failures — the rows anyone actually opens the logs view to find —
+are effectively unreachable by paging. The table filters by date and service but
+not by outcome, so answering "show me what broke" means knowing the date first,
+which is backwards: the incident list tells you *when*, and the logs view should
+let you go straight to *what*. A status-class filter (`failures only`, `5xx
+only`) is the cheapest useful thing left on the page.
+
 
 ## What I'd build next
 
 Ordered by how much each one changes what the dashboard is *for*, not by effort.
 
-**1. Make the pipeline survive bad input.** A real CSV parser, then per-row
-quarantine with a rejected-rows report, then streaming instead of buffering.
-Right now the cleaning report tells you what was fixed; it should also tell you
-what was thrown away and why. These are the limitations above, in the order I
-would actually fix them.
+**1. Make the pipeline survive bad input.** Per-row quarantine is already in —
+an unreadable row is skipped, counted, and reported with its line number rather
+than taking the upload down with it. What is left is a real CSV parser and
+streaming instead of buffering, in that order.
 
 **2. Charts — the largest gap between this and a dashboard someone watches.**
 Everything on the page is currently a number or a table, which means the central
@@ -470,15 +479,13 @@ service is allowed roughly 43 minutes of downtime. "12 minutes of budget left,
 9 days to go" tells an on-call engineer whether to act; "SLA Met" tells them
 nothing until it is already too late. Same data, a decision instead of a verdict.
 
-**4. Make incidents investigable.** The incident list gives a service and a time
-window; the logs table can filter to exactly that. Wiring one to the other — click
-an incident, land on its checks — turns two separate readouts into an actual
-drill-down, and it is a small change because both halves already exist.
 
-**5. Surface failures in the logs table.** With 15k rows at 50 per page, the
-failing checks are effectively unreachable by paging. A status-class filter
-(`5xx only`, `failures only`) is the cheapest useful thing left on the page.
+**4. Cache the aggregates per upload.** Limitation 4 above: the Edge Function
+already holds the cleaned rows at the end of an upload, so writing a summary row
+there costs nothing extra and makes every later dashboard load a single indexed
+read.
 
-**6. Code-split the bundle.** 556 KB raw, 160 KB gzipped, dominated by the
-dashboard route — the upload page pays for a dashboard the first-time visitor
-has not reached yet.
+**5. Surface failures in the logs table.** A status-class filter (`failures
+only`, `5xx only`) — limitation 5 above, and the cheapest useful thing left on
+the page.
+
